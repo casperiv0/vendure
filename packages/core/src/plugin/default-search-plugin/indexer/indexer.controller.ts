@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { LanguageCode } from '@vendure/common/lib/generated-types';
+import { CurrencyCode, LanguageCode } from '@vendure/common/lib/generated-types';
 import { ID } from '@vendure/common/lib/shared-types';
 import { unique } from '@vendure/common/lib/unique';
 import { Observable } from 'rxjs';
@@ -71,9 +71,11 @@ export class IndexerController {
             Logger.verbose(`Reindexing ${count} variants for channel ${ctx.channel.code}`, workerLoggerCtx);
             const batches = Math.ceil(count / BATCH_SIZE);
 
-            await this.connection
-                .getRepository(ctx, SearchIndexItem)
-                .delete({ languageCode: ctx.languageCode, channelId: ctx.channelId });
+            await this.connection.getRepository(ctx, SearchIndexItem).delete({
+                currencyCode: ctx.currencyCode,
+                languageCode: ctx.languageCode,
+                channelId: ctx.channelId,
+            });
             Logger.verbose('Deleted existing index items', workerLoggerCtx);
 
             for (let i = 0; i < batches; i++) {
@@ -167,11 +169,13 @@ export class IndexerController {
                     .reduce((vt, v) => [...vt, ...v.translations], [] as Array<Translation<ProductVariant>>)
                     .map(t => t.languageCode),
             ]);
+            const currencyVariants = unique(variants.map(v => v.currencyCode));
             await this.removeSearchIndexItems(
                 ctx,
                 ctx.channelId,
                 variants.map(v => v.id),
                 languageVariants,
+                currencyVariants,
             );
         }
         return true;
@@ -198,7 +202,9 @@ export class IndexerController {
             .getRepository(ctx, ProductVariant)
             .findOne({ where: { id: data.productVariantId } });
         const languageVariants = variant?.translations.map(t => t.languageCode) ?? [];
-        await this.removeSearchIndexItems(ctx, data.channelId, [data.productVariantId], languageVariants);
+        await this.removeSearchIndexItems(ctx, data.channelId, [data.productVariantId], languageVariants, [
+            variant?.currencyCode ?? ctx.currencyCode,
+        ]);
         return true;
     }
 
@@ -303,10 +309,17 @@ export class IndexerController {
                     .reduce((vt, v) => [...vt, ...v.translations], [] as Array<Translation<ProductVariant>>)
                     .map(t => t.languageCode),
             ]);
+            const currencyVariants = unique(product.variants.map(v => v.currencyCode));
 
             const removedVariantIds = product.variants.map(v => v.id);
             if (removedVariantIds.length) {
-                await this.removeSearchIndexItems(ctx, channelId, removedVariantIds, languageVariants);
+                await this.removeSearchIndexItems(
+                    ctx,
+                    channelId,
+                    removedVariantIds,
+                    languageVariants,
+                    currencyVariants,
+                );
             }
         }
         return true;
@@ -360,6 +373,7 @@ export class IndexerController {
                     const item = new SearchIndexItem({
                         channelId: channel.id,
                         languageCode,
+                        currencyCode: variant.currencyCode,
                         productVariantId: variant.id,
                         price: variant.price,
                         priceWithTax: variant.priceWithTax,
@@ -431,6 +445,7 @@ export class IndexerController {
         const item = new SearchIndexItem({
             channelId: ctx.channelId,
             languageCode: ctx.languageCode,
+            currencyCode: ctx.currencyCode,
             productVariantId: 0,
             price: 0,
             priceWithTax: 0,
@@ -503,15 +518,19 @@ export class IndexerController {
         channelId: ID,
         variantIds: ID[],
         languageCodes: LanguageCode[],
+        currencyCodes: CurrencyCode[],
     ) {
         const keys: Array<Partial<SearchIndexItem>> = [];
         for (const productVariantId of variantIds) {
             for (const languageCode of languageCodes) {
-                keys.push({
-                    productVariantId,
-                    channelId,
-                    languageCode,
-                });
+                for (const currencyCode of currencyCodes) {
+                    keys.push({
+                        productVariantId,
+                        channelId,
+                        languageCode,
+                        currencyCode,
+                    });
+                }
             }
         }
         await this.queue.push(() => this.connection.getRepository(ctx, SearchIndexItem).delete(keys as any));

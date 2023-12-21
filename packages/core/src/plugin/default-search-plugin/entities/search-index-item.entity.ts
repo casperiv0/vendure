@@ -24,6 +24,9 @@ export class SearchIndexItem {
     @EntityId({ primary: true })
     channelId: ID;
 
+    @PrimaryColumn('varchar')
+    currencyCode: CurrencyCode;
+
     @EntityId()
     productId: ID;
 
