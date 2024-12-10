@@ -304,7 +304,7 @@ export class IndexerController {
         });
 
         if (variants) {
-            Logger.info(`Updating ${variants.length} variants`, workerLoggerCtx);
+            Logger.verbose(`Updating ${variants.length} variants`, workerLoggerCtx);
             await this.saveVariants(ctx, variants);
         }
         return true;
@@ -517,13 +517,11 @@ export class IndexerController {
                 }
             }
 
-            // Save in batches per currency code to avoid JS closure issues
             ctx.setChannel(originalChannel);
 
-            await this.queue.push(() => {
-                this.connection.rawConnection.getRepository(SearchIndexItem).save(items, { chunk: 2500 });
-                console.log(JSON.stringify(items, null, 4));
-            });
+            await this.queue.push(() =>
+                this.connection.rawConnection.getRepository(SearchIndexItem).save(items, { chunk: 2500 }),
+            );
         }
     }
 
