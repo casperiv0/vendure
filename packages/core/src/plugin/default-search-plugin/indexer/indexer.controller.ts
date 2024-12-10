@@ -400,6 +400,8 @@ export class IndexerController {
     }
 
     private async saveVariants(ctx: MutableRequestContext, variants: ProductVariant[]) {
+        const items: SearchIndexItem[] = [];
+
         await this.removeSyntheticVariants(ctx, variants);
         const productMap = new Map<ID, Product>();
 
@@ -418,8 +420,6 @@ export class IndexerController {
             const availableCurrencyCodes = this.options.indexCurrencyCode
                 ? unique(ctx.channel.availableCurrencyCodes)
                 : [ctx.channel.defaultCurrencyCode];
-
-            const items: SearchIndexItem[] = [];
 
             for (const currencyCode of availableCurrencyCodes) {
                 for (const languageCode of availableLanguageCodes) {
@@ -445,7 +445,6 @@ export class IndexerController {
                         ctx.setChannel(ch);
 
                         await this.productPriceApplicator.applyChannelPriceAndTax(variant, ctx);
-
                         const item = new SearchIndexItem({
                             channelId: ctx.channelId,
                             languageCode,
@@ -504,18 +503,16 @@ export class IndexerController {
                             );
                             item.productInStock = productInStock;
                         }
-
                         items.push(item);
                     }
                 }
             }
-
-            ctx.setChannel(originalChannel);
-
-            await this.queue.push(() =>
-                this.connection.rawConnection.getRepository(SearchIndexItem).save(items, { chunk: 2500 }),
-            );
         }
+        ctx.setChannel(originalChannel);
+
+        await this.queue.push(() =>
+            this.connection.getRepository(ctx, SearchIndexItem).save(items, { chunk: 2500 }),
+        );
     }
 
     /**
