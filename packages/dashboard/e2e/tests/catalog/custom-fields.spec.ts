@@ -81,6 +81,7 @@ test.describe('Custom Fields', () => {
 
     // ─── Nullable option select ──────────────────────────────────────────
 
+    // #4801 — allow selecting and clearing nullable select items
     test('should allow selecting and clearing a nullable option select', async ({ page }) => {
         await goToFirstProduct(page);
         const dp = detailPage(page);
@@ -99,6 +100,7 @@ test.describe('Custom Fields', () => {
         await expect(featureTypeCombobox).not.toContainText('premium');
     });
 
+    // #4801 — create product without setting a nullable option select
     test('should create a product without setting a nullable option select', async ({ page }) => {
         const dp = detailPage(page);
         await dp.gotoNew();
